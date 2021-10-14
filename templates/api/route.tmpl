@@ -1,0 +1,5 @@
+	{{ .RouteNameSpace }}Router := app.Group("{{ .BasePath }}")
+	{{ .RouteNameSpace }}Router.Use(requestHeaderMiddleware)
+{{- range .Requests }}
+    {{ .RouteNameSpace }}Router.{{ .Method }}("{{ .PathFrameworkPresentation }}", handler.{{ .HandlerName }})
+{{- end -}}

@@ -1,0 +1,8 @@
+package requests
+
+// {{ .ObjectName }} ... {{ .Description }}
+type {{ .ObjectName }} struct {
+{{- range .Properties}}
+	{{.ObjectName}} {{if eq .Required false }}*{{end}}{{.ObjectType}} `json:"{{.Name}}"`
+{{- end }}
+}

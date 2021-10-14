@@ -1,0 +1,46 @@
+package handlers
+
+import (
+	"github.com/gin-gonic/gin"
+	"{{ .PackageName }}/config"
+    "{{ .PackageName }}/internal/repositories"
+	"gorm.io/gorm"
+)
+
+// HandlerInterface ...
+type HandlerInterface interface {
+	HealthzHandler(c *gin.Context)
+{{- range .Entities}}
+    {{ .Name.Plural.Title }}GetHandler(c *gin.Context)
+    {{ .Name.Plural.Title }}PostHandler(c *gin.Context)
+    {{ .Name.Singular.Title }}GetHandler(c *gin.Context)
+    {{ .Name.Singular.Title }}PutHandler(c *gin.Context)
+    {{ .Name.Singular.Title }}DeleteHandler(c *gin.Context)
+{{- end }}
+}
+
+// Handler ...
+type Handler struct {
+	db     *gorm.DB
+	config *config.Config
+{{- range .Entities}}
+    {{ .Name.Singular.Camel }}Repository repositories.{{ .Name.Singular.Title }}RepositoryInterface
+{{- end }}
+}
+
+// NewHandler ...
+func NewHandler(
+	db *gorm.DB,
+	config *config.Config,
+{{- range .Entities}}
+    {{ .Name.Singular.Camel }}Repository repositories.{{ .Name.Singular.Title }}RepositoryInterface,
+{{- end }}
+) HandlerInterface {
+	return &Handler{
+		db:     db,
+		config: config,
+{{- range .Entities}}
+		{{ .Name.Singular.Camel }}Repository: {{ .Name.Singular.Camel }}Repository,
+{{- end }}
+	}
+}

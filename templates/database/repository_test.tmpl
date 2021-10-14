@@ -1,0 +1,41 @@
+package repositories
+
+import (
+	"regexp"
+	"testing"
+
+{{ if eq .PrimaryKey.DataType "uuid" }}
+    "github.com/google/uuid"
+{{ end }}
+	"github.com/DATA-DOG/go-sqlmock"
+	"{{ .PackageName }}/pkg/database"
+	"github.com/stretchr/testify/assert"
+)
+
+func TestNew{{ .Name.Singular.Title }}Repository(t *testing.T) {
+	repository, _ := create{{ .Name.Singular.Title }}RepositoryWithMockDB()
+	assert.NotNil(t, repository)
+}
+
+func Test{{ .Name.Singular.Title }}Repository_First(t *testing.T) {
+	repository, mock := create{{ .Name.Singular.Title }}RepositoryWithMockDB()
+	{{ if eq .PrimaryKey.DataType "uuid" }}
+    id := uuid.New().String()
+    {{ else }}
+	id := int64(123)
+	{{ end }}
+	mock.ExpectQuery(regexp.QuoteMeta(
+		`SELECT * FROM "{{ .Name.Original }}" WHERE id = $1 ORDER BY "{{ .Name.Original }}"."id" LIMIT 1`)).
+		WithArgs(id).
+		WillReturnRows(
+			sqlmock.NewRows([]string{"id"}).AddRow(id))
+
+	_, err := repository.First(nil, ByID(id))
+	assert.NoError(t, err)
+}
+
+func create{{ .Name.Singular.Title }}RepositoryWithMockDB() ({{ .Name.Singular.Title }}RepositoryInterface, sqlmock.Sqlmock) {
+	db, mock, _ := database.GetMockDB()
+	repository := New{{ .Name.Singular.Title }}Repository(db)
+	return repository, mock
+}

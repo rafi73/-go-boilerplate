@@ -1,0 +1,229 @@
+package handlers
+
+import (
+    "errors"
+
+    "{{ .PackageName }}/internal/repositories"
+    "gorm.io/gorm"
+    "net/http"
+    "strconv"
+    "strings"
+
+    "github.com/gin-gonic/gin"
+    "{{ .PackageName }}/internal/http/admin/requests"
+    "{{ .PackageName }}/internal/http/admin/responses"
+    "{{ .PackageName }}/internal/models"
+
+{{- if .HasDecimal }}
+    "github.com/shopspring/decimal"
+{{ end -}}
+)
+
+// {{ .Name.Plural.Title }}GetHandler ... endpoint for GET /{{ .Name.Original }}
+func (handler *Handler) {{ .Name.Plural.Title }}GetHandler(c *gin.Context) {
+    offset, err := strconv.Atoi(c.DefaultQuery("offset", "0"))
+    if err != nil || offset < 0 {
+        offset = 0
+    }
+    limit, err := strconv.Atoi(c.DefaultQuery("limit", "20"))
+    if err != nil || limit < 1 || limit > 100 {
+        limit = 20
+    }
+    order := strings.ToLower(c.DefaultQuery("order", "id"))
+    found := false
+    for _, column := range []string{
+        "id",
+        "name",
+    }{
+        if column == order {
+            found = true
+        }
+    }
+    if !found {
+        order = "id"
+    }
+    direction := strings.ToLower(c.DefaultQuery("direction", "asc"))
+    if direction != "desc" && direction != "asc" {
+        direction = "asc"
+    }
+
+    data, err := handler.{{ .Name.Singular.Camel }}Repository.Get(
+        nil,
+        repositories.Limit(limit),
+        repositories.Offset(offset),
+        repositories.OrderBy(order + " " +direction),
+    )
+    if err != nil {
+        if errors.Is(err, gorm.ErrRecordNotFound) {
+            response := responses.New{{ .Name.Plural.Title }}(&[]models.{{ .Name.Singular.Title }}{}, 0)
+            c.JSON(http.StatusOK, response)
+        }else{
+            c.JSON(http.StatusInternalServerError, responses.NewInternalServerError(err))
+        }
+        return
+    }
+    count, err := handler.{{ .Name.Singular.Camel }}Repository.Count(
+        nil,
+        repositories.Limit(limit),
+        repositories.Offset(offset),
+        repositories.OrderBy(order + " " +direction),
+    )
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, responses.NewInternalServerError(err))
+    }
+    response := responses.New{{ .Name.Plural.Title }}(data, count)
+    c.JSON(http.StatusOK, response)
+}
+
+// {{ .Name.Singular.Title }}GetHandler ... endpoint for GET /{{ .Name.Original }}/{id}
+func (handler *Handler) {{ .Name.Singular.Title }}GetHandler(c *gin.Context) {
+{{ if eq .PrimaryKey.DataType "uuid" }}
+    id := c.Param("id")
+{{ else }}
+    id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+    if err != nil {
+        c.JSON(http.StatusBadRequest, responses.NewInvalidParameterErrorStatus(err))
+        return
+    }
+{{ end }}
+    model, err := handler.{{ .Name.Singular.Camel }}Repository.First(
+        nil,
+        repositories.ByID(id),
+    )
+    if err != nil {
+        if errors.Is(err, gorm.ErrRecordNotFound) {
+            c.JSON(http.StatusNotFound, responses.NewNotFoundError("Not Found"))
+        }else{
+            c.JSON(http.StatusInternalServerError, responses.NewInternalServerError(err))
+        }
+        return
+    }
+    response := responses.New{{ .Name.Singular.Title }}(*model)
+    c.JSON(http.StatusOK, response)
+}
+
+// {{ .Name.Plural.Title }}PostHandler ... endpoint for POST /{{ .Name.Original }}
+func (handler *Handler) {{ .Name.Plural.Title }}PostHandler(c *gin.Context) {
+    var update requests.{{ .Name.Singular.Title }}Update
+    if err := c.Bind(&update); err != nil {
+        c.JSON(http.StatusBadRequest, responses.NewInvalidParameterErrorStatus(err))
+        return
+    }
+    model := models.{{ .Name.Singular.Title }}{}
+
+{{- range .Columns }}
+{{- if .APIUpdatable }}
+    if update.{{ .ObjectName }} != nil {
+{{- if eq .ObjectType "decimal.Decimal" }}
+        decimalData, err := decimal.NewFromString(*update.{{ .ObjectName }})
+        if err != nil {
+            c.JSON(http.StatusBadRequest, responses.NewInvalidParameterErrorStatus(err))
+            return
+        }
+        model.{{ .ObjectName }} = decimalData
+{{- else if eq .ObjectType "datatypes.JSON"}}
+        model.{{ .ObjectName }} = []byte(*update.{{ .ObjectName }})
+{{- else }}
+        model.{{ .ObjectName }} = *update.{{ .ObjectName }}
+{{- end }}
+    }
+{{ end }}
+{{- end -}}
+
+    resultModel, err := handler.{{ .Name.Singular.Camel }}Repository.Create(nil, &model)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, responses.NewInternalServerError(err))
+        return
+    }
+    response := responses.New{{ .Name.Singular.Title }}(*resultModel)
+    c.JSON(http.StatusCreated, response)
+}
+
+// {{ .Name.Singular.Title }}PutHandler ... endpoint for POST endpoint for PUT /{{ .Name.Original }}/{id}
+func (handler *Handler) {{ .Name.Singular.Title }}PutHandler(c *gin.Context) {
+{{ if eq .PrimaryKey.DataType "uuid" }}
+    id := c.Param("id")
+{{ else }}
+    id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+    if err != nil {
+        c.JSON(http.StatusBadRequest, responses.NewInvalidParameterErrorStatus(err))
+        return
+    }
+{{ end }}
+    model, err := handler.{{ .Name.Singular.Camel }}Repository.First(
+        nil,
+        repositories.ByID(id),
+    )
+    if err != nil {
+        if errors.Is(err, gorm.ErrRecordNotFound) {
+            c.JSON(http.StatusNotFound, responses.NewNotFoundError("Not Found"))
+        }else{
+            c.JSON(http.StatusInternalServerError, responses.NewInternalServerError(err))
+        }
+        return
+    }
+    var update requests.{{ .Name.Singular.Title }}Update
+    if err := c.Bind(&update); err != nil {
+        c.JSON(http.StatusBadRequest, responses.NewInvalidParameterErrorStatus(err))
+        return
+    }
+{{- range .Columns }}
+{{- if .APIUpdatable }}
+    if update.{{ .ObjectName }} != nil {
+{{- if eq .ObjectType "decimal.Decimal" }}
+        decimalData, err := decimal.NewFromString(*update.{{ .ObjectName }})
+        if err != nil {
+            c.JSON(http.StatusBadRequest, responses.NewInvalidParameterErrorStatus(err))
+            return
+        }
+        model.{{ .ObjectName }} = decimalData
+{{- else if eq .ObjectType "datatypes.JSON"}}
+        model.{{ .ObjectName }} = []byte(*update.{{ .ObjectName }})
+{{- else }}
+        model.{{ .ObjectName }} = *update.{{ .ObjectName }}
+{{- end }}
+    }
+{{- end -}}
+{{ end }}
+
+    model, err = handler.{{ .Name.Singular.Camel }}Repository.Save(nil, model)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, responses.NewInternalServerError(err))
+        return
+    }
+    response := responses.New{{ .Name.Singular.Title }}(*model)
+    c.JSON(http.StatusOK, response)
+}
+
+// {{ .Name.Singular.Title }}DeleteHandler ... endpoint for DELETE endpoint for PUT /{{ .Name.Original }}/{id}
+func (handler *Handler) {{ .Name.Singular.Title }}DeleteHandler(c *gin.Context) {
+{{ if eq .PrimaryKey.DataType "uuid" }}
+    id := c.Param("id")
+{{ else }}
+    id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+    if err != nil {
+        c.JSON(http.StatusBadRequest, responses.NewInvalidParameterErrorStatus(err))
+        return
+    }
+{{ end }}
+    model, err := handler.{{ .Name.Singular.Camel }}Repository.First(
+        nil,
+        repositories.ByID(id),
+    )
+    if err != nil {
+        if errors.Is(err, gorm.ErrRecordNotFound) {
+            c.JSON(http.StatusNotFound, responses.NewNotFoundError("Not Found"))
+        }else{
+            c.JSON(http.StatusInternalServerError, responses.NewInternalServerError(err))
+        }
+        return
+    }
+    err = handler.{{ .Name.Singular.Camel }}Repository.Delete(nil, model)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, responses.NewInternalServerError(err))
+        return
+    }
+    response := responses.NewSuccessStatus()
+    c.JSON(http.StatusOK, response)
+}
+
